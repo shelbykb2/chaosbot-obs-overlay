@@ -16,8 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The preset pins Windows SDK 10.0.22621, which the runner may not have. Use its newest.
       - name: Configure
-        run: cmake --preset windows-x64
+        run: cmake --preset windows-x64 -A x64
 
       - name: Build
         run: cmake --build build_x64 --config Release
