@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      # The preset names the newest Visual Studio. Use whichever one the runner has.
+      - name: Configure
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property catalog_productLineVersion
+          $major = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property catalog_productDisplayVersion
+          $gen = "Visual Studio $($major.Split('.')[0]) $vs"
+          Write-Host "Generator: $gen"
+          cmake --preset windows-x64 -G "$gen" -A "x64"
+
+      - name: Build
+        run: cmake --build build_x64 --config Release
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "package/chaosbot-overlay"
+          New-Item -ItemType Directory -Force "$out/obs-plugins/64bit", "$out/data/obs-plugins/chaosbot-overlay" | Out-Null
+          Copy-Item build_x64/Release/chaosbot-overlay.dll "$out/obs-plugins/64bit/"
+          Copy-Item build_x64/Release/chaosbot-overlay.pdb "$out/obs-plugins/64bit/" -ErrorAction SilentlyContinue
+          Copy-Item data/* "$out/data/obs-plugins/chaosbot-overlay/" -Recurse
+          Copy-Item LICENSE, README.md $out
+          Compress-Archive -Path "$out/*" -DestinationPath chaosbot-overlay-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chaosbot-overlay-windows-x64
+          path: chaosbot-overlay-windows-x64.zip
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" chaosbot-overlay-windows-x64.zip --title "ChaosBot Overlay ${{ github.ref_name }}" --generate-notes
