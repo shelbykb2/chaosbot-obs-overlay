@@ -16,15 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The preset names the newest Visual Studio. Use whichever one the runner has.
       - name: Configure
-        shell: pwsh
-        run: |
-          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property catalog_productLineVersion
-          $major = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property catalog_productDisplayVersion
-          $gen = "Visual Studio $($major.Split('.')[0]) $vs"
-          Write-Host "Generator: $gen"
-          cmake --preset windows-x64 -G "$gen" -A "x64"
+        run: cmake --preset windows-x64
 
       - name: Build
         run: cmake --build build_x64 --config Release
