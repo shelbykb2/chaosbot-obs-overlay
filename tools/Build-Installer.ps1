@@ -99,7 +99,7 @@ $runtimeOutput = if ($SkipRuntimePublish) {
 if (-not $SkipNativeBuild) {
     $cmake = Get-CMake
     $generator = Get-VisualStudioGenerator
-    Invoke-Native $cmake @('-S', $repo, '-B', (Join-Path $repo 'build_x64'), '-G', $generator, '-A', 'x64')
+    Invoke-Native $cmake @('-S', $repo, '-B', (Join-Path $repo 'build_x64'), '-G', $generator, '-A', 'x64', '-DENABLE_QT=ON', '-DENABLE_FRONTEND_API=ON')
     Invoke-Native $cmake @('--build', (Join-Path $repo 'build_x64'), '--config', 'Release', '--parallel')
 }
 
