@@ -1,0 +1,13 @@
+/* A /scene/ page: one layer per layout. A switch on /scene/live fades the new layout in over the
+   old one, which fades out. Opacity only, run once by the compositor; nothing loops. */
+
+.sc-layer { position: absolute; inset: 0; }
+.sc-layer.is-in { animation: sc-in 400ms ease-out both; }
+.sc-layer.is-out { animation: sc-out 400ms ease-in both; }
+
+@keyframes sc-in { from { opacity: 0; } }
+@keyframes sc-out { to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-layer.is-in, .sc-layer.is-out { animation-duration: 1ms; }
+}

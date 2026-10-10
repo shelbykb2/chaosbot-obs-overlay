@@ -2,6 +2,8 @@
 #include "dock.hpp"
 #include "http-server.hpp"
 #include "sync.hpp"
+#include "discovery.hpp"
+#include "../third_party/browser-panel.hpp"
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 #include <plugin-support.h>
@@ -13,6 +15,10 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPointer>
 
 namespace overlay {
 static const qint64 kConnectedMs = 60000;
@@ -36,21 +42,35 @@ void add_status_dock()
 	auto *root = new QWidget();
 	auto *lay = new QVBoxLayout(root);
 	lay->setContentsMargins(8, 8, 8, 8);
-	lay->addWidget(new QLabel("Your overlay is served from this plugin.", root));
-	const QString base = QString("http://127.0.0.1:%1/").arg(kPluginPort);
-	lay->addWidget(address_row(root, "Chaos", base));
-	lay->addWidget(address_row(root, "Spotify", base + "spotify/"));
-	auto *status = new QLabel(root);
+	root->setMinimumSize(400, 360);
+	auto *status = new QLabel("Starting your overlay editor…", root);
 	lay->addWidget(status);
-	lay->addStretch(1);
-
 	auto *timer = new QTimer(root);
-	auto refresh = [status] {
-		status->setText(ms_since_last_sync() < kConnectedMs ? "ChaosBot is connected." : "ChaosBot is not connected.");
-	};
-	QObject::connect(timer, &QTimer::timeout, root, refresh);
-	refresh();
-	timer->start(1000);
+	auto *net = new QNetworkAccessManager(root);
+	QObject::connect(timer, &QTimer::timeout, root, [root, lay, status, timer, net] {
+		QNetworkRequest request(QUrl("http://127.0.0.1:5261/health"));
+		request.setTransferTimeout(1000);
+		auto *reply = net->get(request);
+		QObject::connect(reply, &QNetworkReply::finished, root, [root, lay, status, timer, reply] {
+			const bool ready = reply->error() == QNetworkReply::NoError;
+			reply->deleteLater();
+			if (!ready) { status->setText("Waiting for the overlay service. If this persists, reinstall the plugin."); return; }
+			timer->stop();
+			QCef *cef = obs_browser_init_panel();
+			if (!cef || !cef->init_browser()) { status->setText("The OBS Browser component is required. Reinstall OBS with Browser support."); return; }
+			char *cookiePath = obs_module_config_path("browser");
+			auto *cookies = cef->create_cookie_manager(cookiePath ? cookiePath : "", false);
+			bfree(cookiePath);
+			const std::string url = (QByteArray("http://127.0.0.1:5261/editor/?token=") + session_token()).toStdString();
+			auto *browser = cef->create_widget(root, url, cookies);
+			if (!browser) { status->setText("OBS could not open the overlay editor."); return; }
+			browser->allowAllPopups(false);
+			lay->removeWidget(status); status->deleteLater();
+			lay->setContentsMargins(0, 0, 0, 0);
+			lay->addWidget(browser);
+		});
+	});
+	timer->start(500);
 
 	const bool ok = obs_frontend_add_dock_by_id("chaosbot-overlay-status", "Overlay", root);
 	obs_log(LOG_INFO, "dock added: %s", ok ? "yes" : "no");

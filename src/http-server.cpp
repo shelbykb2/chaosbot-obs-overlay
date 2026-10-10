@@ -2,6 +2,7 @@
 #include "http-server.hpp"
 #include "site.hpp"
 #include "sync.hpp"
+#include "discovery.hpp"
 #include <obs-module.h>
 #include <plugin-support.h>
 #include <QDir>
@@ -19,6 +20,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
+#include <QRegularExpression>
 #include <memory>
 
 namespace overlay {
@@ -33,6 +35,8 @@ static QMutex g_frame_mutex;
 static QByteArray g_frame;
 static QElapsedTimer g_last_request;
 static bool g_requested_once = false;
+static QString g_bundled;
+static QString g_runtime_site;
 
 static const char *kSeedIndex = R"HTML(<!doctype html><meta charset="utf-8"><title>ChaosBot Overlay</title>
 <body style="margin:0;background:#202040;color:#fff;font:32px sans-serif">
@@ -101,7 +105,7 @@ static void reply(const QPointer<QTcpSocket> &s, int code, const QByteArray &typ
 	if (!s) return;
 	QByteArray h = "HTTP/1.1 " + QByteArray::number(code) + " " + reason(code) + "\r\nContent-Type: " + type +
 		       "\r\nContent-Length: " + QByteArray::number(body.size()) +
-		       "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+		       "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nAccess-Control-Allow-Origin: http://127.0.0.1:5261\r\nConnection: close\r\n\r\n";
 	s->write(h);
 	if (code != 204) s->write(body);
 	s->disconnectFromHost();
@@ -124,7 +128,7 @@ static void proxy_api(const QPointer<QTcpSocket> &s, const Request &r)
 		reply_text(s, 502, "ChaosBot is not running.");
 		return;
 	}
-	QNetworkRequest req(QUrl::fromEncoded("http://127.0.0.1:5051" + r.target));
+	QNetworkRequest req(QUrl::fromEncoded("http://127.0.0.1:5261" + r.target));
 	req.setTransferTimeout(kProxyTimeoutMs);
 	QNetworkReply *rep = g_net->get(req);
 	QObject::connect(rep, &QNetworkReply::finished, rep, [s, rep] {
@@ -151,11 +155,29 @@ static void serve_static(const QPointer<QTcpSocket> &s, const Request &r)
 	if (rel.startsWith("scene/")) rel = "scene/";
 	QString file;
 	QFile f;
-	if (!resolve_read(rel, &file) || (f.setFileName(file), !f.open(QIODevice::ReadOnly))) {
+	const bool companion = rel == "companion/";
+	if (companion) {
+		if (!resolve_read("index.html", &file)) { reply_text(s, 404, "ChaosBot has not connected."); return; }
+	} else if (rel.isEmpty() || rel == "index.html" || rel == "source.js" || rel == "chaos/signalr.min.js" || rel == "scene/" || rel.startsWith("spotify/") || rel.startsWith("ui/")) {
+		file = g_bundled + "/" + rel;
+		if (QFileInfo(file).isDir()) file += "/index.html";
+	} else if (rel.startsWith("overlay/") && QFileInfo::exists(g_runtime_site + "/" + rel)) {
+		file = QFileInfo(g_runtime_site + "/" + rel).canonicalFilePath();
+		if (!file.startsWith(QDir(g_runtime_site).canonicalPath() + "/", Qt::CaseInsensitive)) { reply_text(s, 400, "That path is not allowed."); return; }
+	} else if (!resolve_read(rel, &file)) {
+		reply_text(s, 404, "Not found."); return;
+	}
+	if ((f.setFileName(file), !f.open(QIODevice::ReadOnly))) {
 		reply_text(s, 404, "Not found.");
 		return;
 	}
-	reply(s, 200, content_type(file), f.readAll());
+	QByteArray contents = f.readAll();
+	if (companion) {
+		QString html = QString::fromUtf8(contents);
+		html.remove(QRegularExpression("<iframe[^>]*id=\"layout\"[^>]*></iframe>"));
+		contents = html.toUtf8();
+	}
+	reply(s, 200, content_type(file), contents);
 }
 
 static void dispatch(const QPointer<QTcpSocket> &s, const Request &r)
@@ -165,6 +187,16 @@ static void dispatch(const QPointer<QTcpSocket> &s, const Request &r)
 		return;
 	}
 	if (r.path.startsWith("/sync/")) {
+		if (r.path == "/sync/state") {
+			QByteArray auth=r.headers.value("authorization");
+			if (!auth.startsWith("Bearer ") || !token_matches(auth.mid(7))) { reply_text(s,401,"Sign in to sync."); return; }
+			if (r.method != "GET" && r.method != "PUT") {reply_text(s,405,"Use GET or PUT.");return;}
+			QNetworkRequest req(QUrl("http://127.0.0.1:5261/api/internal/scenes"));
+			req.setRawHeader("Authorization", auth);req.setHeader(QNetworkRequest::ContentTypeHeader,"application/json");req.setTransferTimeout(5000);
+			auto *rep=r.method=="GET"?g_net->get(req):g_net->put(req,r.body);
+			QObject::connect(rep,&QNetworkReply::finished,rep,[s,rep]{ const auto status=rep->attribute(QNetworkRequest::HttpStatusCodeAttribute);reply(s,status.isValid()?status.toInt():502,"application/json",rep->readAll());rep->deleteLater(); });
+			return;
+		}
 		const SyncReply sr = handle_sync(r.method, r.path, r.headers.value("authorization"), r.body);
 		reply(s, sr.code, sr.type, sr.body);
 		return;
@@ -175,7 +207,7 @@ static void dispatch(const QPointer<QTcpSocket> &s, const Request &r)
 	}
 	if (r.path == "/health") {
 		reply(s, 200, "application/json",
-		      QByteArray("{\"ok\":true,\"version\":\"") + PLUGIN_VERSION + "\"}");
+		      QByteArray("{\"ok\":true,\"standalone\":true,\"version\":\"") + PLUGIN_VERSION + "\"}");
 		return;
 	}
 	if (r.path == "/mirror.jpg") {
@@ -189,6 +221,7 @@ static void dispatch(const QPointer<QTcpSocket> &s, const Request &r)
 		return;
 	}
 	if (r.path.startsWith("/api/")) {
+		if (r.path.startsWith("/api/private/") || r.path.startsWith("/api/internal/")) { reply_text(s, 403, "Use the editor panel."); return; }
 		QString ignored;
 		if (!clean_request_path(r.path, &ignored)) {
 			reply_text(s, 400, "That path is not allowed.");
@@ -269,6 +302,10 @@ bool start_http_server()
 	const QString site = QString::fromUtf8(dir);
 	bfree(dir);
 	site_init(site);
+	char *saved=obs_module_config_path("runtime-site");g_runtime_site=QString::fromUtf8(saved?saved:"");bfree(saved);
+	char *bundled = obs_module_file("site");
+	g_bundled = QString::fromUtf8(bundled ? bundled : "");
+	bfree(bundled);
 	if (!QFileInfo::exists(site_dir() + "/index.html")) {
 		QFile f(site_dir() + "/index.html");
 		if (f.open(QIODevice::WriteOnly)) f.write(kSeedIndex);

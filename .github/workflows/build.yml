@@ -15,32 +15,57 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      # The preset pins Windows SDK 10.0.22621, which the runner may not have. Use its newest.
-      - name: Configure
-        run: cmake --preset windows-x64 -A x64
-
-      - name: Build
-        run: cmake --build build_x64 --config Release
-
-      - name: Package
+      - name: Install Inno Setup 6
         shell: pwsh
         run: |
-          $out = "package/chaosbot-overlay"
-          New-Item -ItemType Directory -Force "$out/obs-plugins/64bit", "$out/data/obs-plugins/chaosbot-overlay" | Out-Null
-          Copy-Item build_x64/Release/chaosbot-overlay.dll "$out/obs-plugins/64bit/"
-          Copy-Item build_x64/Release/chaosbot-overlay.pdb "$out/obs-plugins/64bit/" -ErrorAction SilentlyContinue
-          Copy-Item data/* "$out/data/obs-plugins/chaosbot-overlay/" -Recurse
-          Copy-Item LICENSE, README.md $out
-          Compress-Archive -Path "$out/*" -DestinationPath chaosbot-overlay-windows-x64.zip
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys') { throw 'Inno Setup publisher signature is not valid.' }
+          $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed with exit code $($process.ExitCode)." }
+          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) { throw 'Inno Setup compiler was not installed.' }
+
+      - name: UI tests
+        working-directory: overlay-ui
+        run: npm ci && npm test
+
+      - name: Runtime tests
+        run: dotnet run --configuration Release --project runtime-tests/OverlayRuntime.Tests.csproj
+
+      - name: Build installer
+        shell: pwsh
+        run: ./tools/Build-Installer.ps1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: chaosbot-overlay-windows-x64
-          path: chaosbot-overlay-windows-x64.zip
+          name: ChaosBot-OBS-Overlay-Setup
+          path: package/installer-output/ChaosBot-OBS-Overlay-Setup.exe
+          if-no-files-found: error
 
-      - name: Release
+      - name: Publish installer release asset
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" chaosbot-overlay-windows-x64.zip --title "ChaosBot Overlay ${{ github.ref_name }}" --generate-notes
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $asset = 'package/installer-output/ChaosBot-OBS-Overlay-Setup.exe'
+          if ((Get-AuthenticodeSignature -LiteralPath $asset).Status -ne 'Valid') {
+            throw 'Release publishing requires a signed installer. This CI build is an unsigned validation artifact; use the Azure-signed release build.'
+          }
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset
+            if ($LASTEXITCODE -ne 0) { throw "Uploading the installer to release $tag failed." }
+          } else {
+            gh release create $tag $asset --title "ChaosBot OBS Overlay $tag" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "Creating release $tag failed." }
+          }

@@ -1,0 +1,78 @@
+/* Alerts and the goal bar (editor/alerts.tsx), in OBS and on the editor's canvas. Sizes are in em of
+   the element's text size. Chromium 103: no color-mix(), :has() or container queries. An alert plays
+   one entrance and one exit animation; while it holds, nothing moves. */
+
+.al {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; line-height: 1.2; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+}
+.al-box { display: flex; align-items: center; gap: 0.7em; min-width: 0; max-width: 100%; max-height: 100%; }
+.al-icon { flex: none; width: 2.2em; height: 2.2em; padding: 0.45em; border-radius: 0.6em; background: var(--al-accent); }
+.al-icon path { fill: #fff; stroke: #fff; stroke-width: 0.6; stroke-linejoin: round; }
+.al-pic { flex: none; height: 3.2em; max-width: 30%; object-fit: contain; }
+.al-words { min-width: 0; display: flex; flex-direction: column; gap: 0.2em; }
+.al-head { font-weight: 700; font-size: 1em; overflow-wrap: anywhere; }
+.al-head b { color: var(--al-accent); font-weight: 800; }
+.al-msg { font-size: 0.66em; color: rgba(255, 255, 255, 0.8); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Card: a dark rounded card with an accent edge. */
+.al.is-card .al-box {
+  padding: 0.6em 1em 0.6em 0.7em; border-radius: 0.8em;
+  background: linear-gradient(180deg, rgba(24, 21, 32, 0.95), rgba(14, 13, 18, 0.93));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0.5em 1.4em rgba(0, 0, 0, 0.4), inset 0 -0.15em 0 var(--al-accent);
+}
+.al.is-card.ph-in .al-box { animation: al-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.al.is-card.ph-out .al-box { animation: al-sink 0.5s ease-in both; }
+
+/* Banner: a full-width strip that slides across. */
+.al.is-banner { justify-content: flex-start; }
+.al.is-banner .al-box {
+  width: 100%; padding: 0.5em 1em; border-radius: 0.3em;
+  background: linear-gradient(90deg, var(--al-accent) 0, var(--al-accent) 0.35em, rgba(18, 17, 22, 0.94) 0.35em);
+}
+.al.is-banner .al-icon { background: none; padding: 0.2em; }
+.al.is-banner .al-icon path { fill: var(--al-accent); stroke: var(--al-accent); }
+.al.is-banner.ph-in .al-box { animation: al-slide 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.al.is-banner.ph-out .al-box { animation: al-slide-out 0.5s ease-in both; }
+
+/* Pop: no panel, big outlined words, the picture above them. */
+.al.is-pop .al-box { flex-direction: column; text-align: center; gap: 0.3em; }
+.al.is-pop .al-pic { height: 4em; max-width: 60%; }
+.al.is-pop .al-icon { width: 2.6em; height: 2.6em; border-radius: 50%; box-shadow: 0 0 1.2em var(--al-accent); }
+.al.is-pop .al-head { font-size: 1.15em; font-weight: 800; text-shadow: 0 0.06em 0 rgba(0, 0, 0, 0.9), 0 0 0.5em rgba(0, 0, 0, 0.7); }
+.al.is-pop .al-msg { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+.al.is-pop.ph-in .al-box { animation: al-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.al.is-pop.ph-out .al-box { animation: al-fade 0.5s ease-in both; }
+
+@keyframes al-rise { from { opacity: 0; transform: translateY(0.8em) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes al-sink { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(0.5em); } }
+@keyframes al-slide { from { opacity: 0; transform: translateX(-12%); } to { opacity: 1; transform: none; } }
+@keyframes al-slide-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(8%); } }
+@keyframes al-pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes al-fade { from { opacity: 1; } to { opacity: 0; transform: scale(0.96); } }
+
+/* Goal bar. The fill moves with a transition only when the count changes (a width change, a few times a stream). */
+
+.gl {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.35em;
+  color: #fff; font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; line-height: 1.2;
+}
+.gl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.8em; min-width: 0; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); }
+.gl-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-weight: 700; font-size: 0.8em; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.gl-count { flex: none; font-size: 0.8em; font-weight: 700; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.85); }
+.gl-track {
+  position: relative; height: 1em; border-radius: 0.5em; overflow: hidden;
+  background: rgba(14, 13, 18, 0.85); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.gl-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit;
+  background: linear-gradient(90deg, var(--gl-accent), rgba(255, 255, 255, 0.35) 160%), var(--gl-accent);
+  transition: width 0.7s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.gl.is-slim .gl-track { height: 0.4em; }
+.gl.is-full .gl-count { color: var(--gl-accent); }
+.gl.is-full .gl-track { box-shadow: 0 0 0.8em var(--gl-accent); }

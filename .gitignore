@@ -9,6 +9,12 @@
 !/data
 !/src
 !/third_party
+!/overlay-ui
+!/runtime
+!/runtime-tests
+!/installer
+!/tools
+!/docs
 !.clang-format
 !.gersemirc
 !.gitignore
@@ -26,3 +32,16 @@
 
 # Exclude CMake build number cache
 /cmake/.CMakeBuildNumber
+
+**/bin/
+**/obj/
+**/node_modules/
+/build_x64/
+/.deps/
+/package/
+/dist/
+/graphify-out/
+/test-artifacts/
+/tools/.artifact-signing/
+*.user
+*.tmp

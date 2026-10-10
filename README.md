@@ -1,81 +1,54 @@
-# ChaosBot Overlay (OBS plugin)
+# ChaosBot OBS Overlay
 
-An OBS plugin that keeps a streamer's ChaosBot overlay up when ChaosBot is closed.
+A free, open-source overlay creator for OBS Studio on Windows. Create and save layouts directly in the **Overlay** dock. The editor and live overlays run with OBS; ChaosBot is optional.
 
-ChaosBot copies the overlay pages, the saved layouts, and the pictures and sounds they use into
-the plugin. The plugin serves that copy on `http://127.0.0.1:5260/`, so the two browser sources
-point at the plugin instead of ChaosBot:
+The editor includes text, pictures, shapes, webcam frames, countdowns, Twitch chat, alerts and goals, Spotify cards and an audio visualizer. Use multiple scenes and game-based switching, and position elements against a live preview of OBS. Imported ChaosBot layouts retain their saved data; bot-control and mascot features belong to ChaosBot.
 
-| Source       | Address                              |
-|--------------|--------------------------------------|
-| Overlay      | `http://127.0.0.1:5260/`             |
-| Spotify card | `http://127.0.0.1:5260/spotify/`     |
+## Install
 
-When ChaosBot runs, the pages connect to its hub on port 5051 and are live as before. When it is
-closed, the Overlay source draws the last layout ChaosBot sent.
+Build or obtain `ChaosBot-OBS-Overlay-Setup.exe`, close OBS and run it. Setup supports standard and portable installations of OBS 31 or later on 64-bit Windows. It bundles the local runtime, so users do not need to install .NET or extract a ZIP. Open **Docks → Overlay**, then add these OBS browser sources:
 
-The plugin also renders a small JPEG of OBS's output (without ChaosBot's own sources) for the
-editor's "Live from OBS" view. Nothing is rendered unless the editor asked in the last 2 seconds.
+| Source | URL |
+| --- | --- |
+| Full overlay | `http://127.0.0.1:5260/` |
+| Spotify card | `http://127.0.0.1:5260/spotify/` |
 
-A dock called **Overlay** shows the two addresses and whether ChaosBot is connected.
+The plugin owns its layouts and media in OBS's plugin configuration directory. Uninstalling removes installed program files and preserves those layouts. See [installer details](docs/INSTALLER.md).
 
-## How ChaosBot finds it
+## Connections and generation
 
-On load the plugin writes `%LOCALAPPDATA%\ChaosBot Overlay\plugin.json`:
+Open **Connections** in the editor. Twitch sign-in uses the bundled public app and device authorization; users do not need a client secret or their own app registration. An advanced client ID override supports forks. The public registration is `r0se55c0m8ba1fsmp6iewuq8md6l2b`; [Twitch documents device authorization here](https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#device-code-grant-flow).
 
-```json
-{ "port": 5260, "token": "<random per start>", "pid": 1234, "version": "1.0.0" }
+Spotify requires your Spotify app's client ID and the redirect URI `http://127.0.0.1:5261/auth/spotify/callback`. Authorization uses PKCE without a client secret. Provider account and application restrictions still apply.
+
+**Describe an overlay** supports either ChaosBot account sign-in with Pro access, or your own OpenAI, Anthropic, Gemini or compatible-provider API key. Generated layouts appear as a draft before you apply them. Provider keys and connection tokens are encrypted for the current Windows account and excluded from layouts. Usage follows the selected provider's billing and limits.
+
+## Connect ChaosBot
+
+ChaosBot discovers `%LOCALAPPDATA%\ChaosBot Overlay\plugin.json` while OBS is running and syncs authenticated requests to port 5260. The compatible desktop integration shares edits in both directions and copies referenced media. Concurrent local edits are saved in ChaosBot's `overlay-conflicts` directory before loading the plugin's latest document. Older desktop versions can send their legacy overlay cache; modern synchronization takes precedence. Closing ChaosBot leaves the standalone overlay and connections available in OBS.
+
+Discovery includes `port`, `token`, `pid`, `version`, `standalone` and `runtimePort`. The token changes each OBS start. `CHAOSBOT_OVERLAY_DATA_DIR` changes the discovery directory for isolated tests.
+
+## Development
+
+Prerequisites: Visual Studio 2022 or later with C++, .NET 10, Node.js 22.12+ and Inno Setup 6. OBS dependency versions are pinned in `buildspec.json`.
+
+```powershell
+./tools/Build-Installer.ps1
+# Azure Artifact Signing, with the configured signing account:
+./tools/Build-Installer.ps1 -Sign
 ```
 
-ChaosBot reads it, checks `GET /health`, and syncs with the token. The file is removed when OBS
-exits. `CHAOSBOT_OVERLAY_DATA_DIR` moves it, for tests only.
+Output: `package/installer-output/ChaosBot-OBS-Overlay-Setup.exe`. The signature helper verifies Authenticode and a timestamp. CI builds an installer artifact; publishing a release requires an explicit version tag. Test with a separate portable OBS installation.
 
-## HTTP routes
-
-Only `127.0.0.1:5260` and `localhost:5260` are accepted as the Host (421 otherwise).
-
-| Route | Auth | What |
-|-------|------|------|
-| `GET /health` | none | `{"ok":true,"version":...}` |
-| `GET /`, `/spotify/`, `/scene/*`, other files | none | the synced site |
-| `GET /api/*` | none | proxied to ChaosBot on 5051; 502 when it is closed |
-| `GET /mirror.jpg` | none | the latest OBS frame; 404 until one exists |
-| `GET /sync/manifest` | Bearer | `{"files":{"<path>":"<sha256>"}}` |
-| `PUT` / `DELETE /sync/files/<path>` | Bearer | write or remove one file |
-
-Writes are allowed only under `index.html`, `chaos/`, `scene/`, `spotify/`, `ui/` and `overlay/`.
-
-## Installing (Windows)
-
-1. Close OBS.
-2. Download `chaosbot-overlay-windows-x64.zip` from the
-   [releases](https://github.com/shelbykb2/chaosbot-obs-overlay/releases).
-3. Unzip it into your OBS folder (usually `C:\Program Files\obs-studio`), so the DLL lands in
-   `obs-plugins\64bit` and the locale files in `data\obs-plugins\chaosbot-overlay`.
-4. Start OBS and ChaosBot. ChaosBot finds the plugin by itself and copies the overlay over.
-5. Point your browser sources at the addresses above.
-
-Needs OBS 31 or later on Windows x64.
-
-## Building (Windows)
-
-Needs Visual Studio 2022 or later with the C++ workload, and CMake 3.28 or later. The preset names
-Visual Studio 2026; add `-G "Visual Studio 17 2022"` to build with 2022. The first configure downloads
-the OBS sources and dependencies named in `buildspec.json`.
-
-```
-cmake --preset windows-x64
-cmake --build build_x64 --config Release
+```powershell
+dotnet run --project runtime-tests/OverlayRuntime.Tests.csproj -c Release
+cd overlay-ui
+npm ci
+npm test
+npm run build
 ```
 
-The plugin is `build_x64/Release/chaosbot-overlay.dll`. Copy it with `data/` into an OBS plugins
-folder. Test with a portable OBS, never your streaming install.
+The native server is restricted to loopback and serves overlay pages on 5260. The runtime uses 5261; editor requests require a per-start authentication cookie, and scene synchronization requires a bearer token and revision match. OBS preview captures exclude this plugin's browser sources and run only while requested by the editor.
 
-## Not here yet
-
-- The plugin's own Twitch and Spotify sign-ins (live data still comes from ChaosBot).
-- Editing the overlay inside OBS.
-- Switching layouts by game while ChaosBot is closed.
-- An installer. The zip is unpacked by hand for now.
-
-The build scaffolding comes from the OBS plugin template (GPL-2.0, see `LICENSE`).
+GPL-2.0; see [LICENSE](LICENSE) and [third-party notices](third_party/NOTICE.md).
