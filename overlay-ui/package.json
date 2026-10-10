@@ -9,7 +9,7 @@
     "dev:editor": "vite -c vite.editor.config.ts",
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/"
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "preact": "11.0.0"
