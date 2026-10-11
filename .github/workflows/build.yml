@@ -51,4 +51,3 @@ jobs:
           name: ChaosBot-OBS-Overlay-Setup
           path: package/installer-output/ChaosBot-OBS-Overlay-Setup.exe
           if-no-files-found: error
-

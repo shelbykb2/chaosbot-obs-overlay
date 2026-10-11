@@ -10,6 +10,6 @@ Validated on October 10, 2026 with OBS Studio 32.2.2 in an isolated portable ins
 - Twitch accepted a device authorization request using the newly registered public plugin client ID. This check did not authorize a user's account.
 - The installer and its native/runtime payloads have valid Azure Authenticode signatures and timestamps. Portable installation kept its uninstaller within the OBS test folder. Running-plugin mutex protection was observed. Uninstall removed installed program files, preserved saved layouts byte-for-byte and requested no Windows restart.
 
-Final local installer SHA-256: `E2D0538B1780B2C0D90EE146D117EBD9FC60BDFA5B3CA25287FEA27DCEACF88F`.
+Signed 1.1.0-beta.1 installer SHA-256: `2083E5A75ACAD5943A9E6B731A9B5084349F237CF78600E07894738493D19C5B`.
 
-Live Spotify, authorized Twitch event delivery and paid model calls require the respective user's accounts. Those account-based flows were not exercised end-to-end; token/provider contracts were tested with controlled HTTP responses. OBS 33+ folder routing is implemented but was not tested with an installed OBS 33 build. The source PR is reviewable; no public release or desktop feed promotion was performed.
+Live Spotify, authorized Twitch event delivery and paid model calls require the respective user's accounts. Those account-based flows were not exercised end-to-end; token/provider contracts were tested with controlled HTTP responses. OBS 33+ folder routing is implemented but was not tested with an installed OBS 33 build. Beta setup and uninstall were also verified with DisplayVersion 1.1.0-beta.1. The separate desktop integration remains a review PR; no desktop feed promotion was performed.
