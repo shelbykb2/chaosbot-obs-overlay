@@ -13,6 +13,9 @@ public sealed class Feeds(OverlayState state, Connections connections, IHubConte
     readonly int parentPid = int.TryParse(configuration["parent"], out var pid) ? pid : 0;
     DateTimeOffset nextTwitchValidation = DateTimeOffset.MinValue, nextCategory = DateTimeOffset.MinValue, nextCompanion = DateTimeOffset.MinValue;
     string lastForeground = "";
+    string lastCategory = "";
+    bool triggersInitialized;
+    DateTimeOffset nextTwitchCheck = DateTimeOffset.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         var twitchTask = TwitchLoop(stoppingToken);
@@ -45,7 +48,7 @@ public sealed class Feeds(OverlayState state, Connections connections, IHubConte
         while (!ct.IsCancellationRequested) {
             try {
                 await connections.PollTwitchAuthorization();
-                if (DateTimeOffset.UtcNow >= nextTwitchValidation) { nextTwitchValidation = DateTimeOffset.UtcNow.AddMinutes(45); await connections.EnsureTwitchValid(); }
+                await MaintainTwitch(DateTimeOffset.UtcNow);
                 if (DateTimeOffset.UtcNow >= nextCategory) { nextCategory = DateTimeOffset.UtcNow.AddSeconds(45); await connections.PollCategory(); }
                 if (connections.TwitchConnected && wsTask.IsCompleted) wsTask = EventSubLoop(ct);
                 if (!connections.TwitchConnected && !wsTask.IsCompleted) { /* EventSub observes the disconnect and exits on its next receive timeout. */ }
@@ -54,6 +57,15 @@ public sealed class Feeds(OverlayState state, Connections connections, IHubConte
             try { await Task.Delay(500, ct); } catch (OperationCanceledException) { break; }
         }
         try { await wsTask; } catch (OperationCanceledException) { }
+    }
+
+    internal async Task MaintainTwitch(DateTimeOffset now) {
+        if (now < nextTwitchCheck) return;
+        // Check expiry on a short cadence, independently of Twitch's periodic validation.
+        nextTwitchCheck = now.AddSeconds(15);
+        var validationDue = now >= nextTwitchValidation;
+        var valid = await connections.EnsureTwitchValid(validate: validationDue);
+        if (valid && validationDue) nextTwitchValidation = now.AddMinutes(45);
     }
 
     async Task SpotifyLoop(CancellationToken ct) {
@@ -160,7 +172,7 @@ public sealed class Feeds(OverlayState state, Connections connections, IHubConte
             case "channel.chat.message_delete":
                 await connections.ClearChat(S("message_id")); break;
             case "channel.chat.clear_user_messages":
-                await connections.ClearChat(user: S("user_login")); break;
+                await connections.ClearChat(user: S("target_user_login")); break;
             case "channel.chat.clear":
                 await connections.ClearChat(all: true); break;
         }
@@ -202,9 +214,13 @@ public sealed class Feeds(OverlayState state, Connections connections, IHubConte
         return uri;
     }
 
-    async Task SwitchForFocusedGame(CancellationToken ct) {
-        var game = WindowGames.Focused() ?? ""; lastForeground = game;
+    Task SwitchForFocusedGame(CancellationToken ct) => SwitchForGame(WindowGames.Focused() ?? "", ct);
+
+    internal async Task SwitchForGame(string game, CancellationToken ct) {
         var doc = state.Document; var scenes = doc["scenes"]!.AsArray(); var category = connections.Category;
+        var categoryKey = (category?["id"]?.ToString() ?? "") + "\n" + (category?["name"]?.ToString() ?? "");
+        if (triggersInitialized && game.Equals(lastForeground, StringComparison.OrdinalIgnoreCase) && categoryKey == lastCategory) return;
+        triggersInitialized = true; lastForeground = game; lastCategory = categoryKey;
         var selected = scenes.FirstOrDefault(scene => scene?["showFor"] is JsonArray triggers && triggers.Any(t => {
             var kind = t?["kind"]?.GetValue<string>(); var value = t?["value"]?.GetValue<string>() ?? "";
             return kind == "game" && value.Equals(game, StringComparison.OrdinalIgnoreCase) || kind == "category" &&

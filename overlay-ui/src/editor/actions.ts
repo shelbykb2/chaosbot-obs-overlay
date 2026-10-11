@@ -191,6 +191,7 @@ export function deleteLayout(id: string) {
   const gone = doc.scenes.find((s) => s.id === id);
   commit((d) => {
     d.scenes = d.scenes.filter((s) => s.id !== id);
+    if (d.activeSceneId === id) d.activeSceneId = d.scenes[0].id;
   });
   if (get().editingId === id) set({ editingId: null, sel: [], chaosSel: false });
   if (gone) toast(`Deleted ${gone.name}. Ctrl+Z brings it back.`);

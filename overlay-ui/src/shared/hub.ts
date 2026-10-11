@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { isStale, moduleScripts } from './freshness';
 import { chaosOrigin } from './env';
+import { HubState } from './hubState';
 
 /**
  * Connection to the overlay hub (/overlay/hub). The SignalR client is the copy the Chaos page
@@ -13,7 +14,7 @@ import { chaosOrigin } from './env';
 export type HubHandlers = Record<string, (arg: any) => void>;
 
 // The hub also sends these to every page.
-const KNOWN = ['overlayConfig', 'chaos', 'nowPlaying', 'spotifyConfig', 'spectrum', 'scene', 'scenePreview'];
+const KNOWN = ['overlayConfig', 'chaos', 'nowPlaying', 'spotifyConfig', 'spectrum', 'scene', 'scenePreview', 'goal', 'chatHistory', 'chat', 'chatClear'];
 
 interface SignalRConnection {
   state: string;
@@ -89,11 +90,10 @@ const connected = () => !!connection && connection.state === sr!.HubConnectionSt
 
 // State the hub sends once on connect. A piece that mounts later (a scene page draws its card only
 // after the layout arrives) gets the last one straight away instead of waiting for the next change.
-const STATE = new Set(['overlayConfig', 'nowPlaying', 'spotifyConfig', 'scene', 'scenePreview', 'commandFeed']);
-const last = new Map<string, unknown>();
+const last = new HubState();
 
 function dispatch(name: string, arg: unknown) {
-  if (STATE.has(name)) last.set(name, arg);
+  last.remember(name, arg);
   for (const s of subs) s.current[name]?.(arg);
 }
 
@@ -220,7 +220,7 @@ export function useHub(handlers: HubHandlers, enabled = true) {
     if (!enabled) return;
     subs.add(ref);
     listen(Object.keys(ref.current));
-    for (const [name, arg] of last) ref.current[name]?.(arg);
+    last.replay(ref.current);
     if (subs.size === 1) open();
     return () => {
       subs.delete(ref);
