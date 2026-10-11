@@ -173,6 +173,10 @@ static void serve_static(const QPointer<QTcpSocket> &s, const Request &r)
 	}
 	QByteArray contents = f.readAll();
 	if (companion) {
+		if (contents.trimmed() == QByteArray(kSeedIndex).trimmed()) {
+			reply_text(s, 404, "ChaosBot has not copied its companion overlay yet.");
+			return;
+		}
 		QString html = QString::fromUtf8(contents);
 		html.remove(QRegularExpression("<iframe[^>]*id=\"layout\"[^>]*></iframe>"));
 		contents = html.toUtf8();
