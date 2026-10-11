@@ -1,0 +1,21 @@
+{
+  "name": "chaosbot-overlay-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Overlay pieces OBS renders (Spotify card first). Built with Vite into ChaosBot.Web/wwwroot, which is committed, so the .NET build never needs Node.",
+  "scripts": {
+    "build": "tsc --noEmit && vite build && vite build -c vite.editor.config.ts && node scripts/package-site.mjs",
+    "dev:editor": "vite -c vite.editor.config.ts",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs"
+  },
+  "dependencies": {
+    "preact": "11.0.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.3"
+  }
+}

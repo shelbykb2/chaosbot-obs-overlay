@@ -1,0 +1,222 @@
+/* Shared overlay pieces: region, card surface (backdrop), progress bar, marquee.
+
+   Performance rules for everything here:
+   - Loops animate transform and opacity only, so the compositor runs them.
+   - Every loop is declared paused. The shared 30 fps clock advances them (shared/loops.ts)
+     only while the piece is live (playing, visible, motion allowed), so they draw at 30 fps
+     and hold still otherwise.
+   - Under .ov-reduced no loop runs at all.
+   - No backdrop-filter and no animated filter. Soft light is a gradient or a pre-blurred
+     bitmap whose opacity or transform moves. */
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: #fff;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The configured rect. It clips: nothing a piece draws may land outside it. */
+.ov-region { position: absolute; overflow: hidden; contain: layout paint; }
+.ov-fit { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+/* ---------------------------------------------------------------- surface */
+
+.ov-box {
+  position: absolute;
+  overflow: hidden;
+  isolation: isolate;
+  background: rgb(var(--sp-dark-rgb));
+  /* Small on purpose: shadows stay inside the design box margin, so the rect never clips them. */
+  box-shadow: 0 4px 9px -4px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.bd-art, .bd-aurora, .bd-tint, .bd-frost, .bd-sweep, .bd-grain, .bd-rim { position: absolute; inset: 0; border-radius: inherit; }
+
+.bd-art {
+  inset: -30%;
+  border-radius: 0;
+  background: var(--sp-art-url, none) center / cover no-repeat;
+  animation: bd-drift 26s ease-in-out infinite alternate paused;
+}
+@keyframes bd-drift {
+  0% { transform: translate3d(-4%, -3%, 0) scale(1.05) rotate(0deg); }
+  100% { transform: translate3d(4%, 3%, 0) scale(1.15) rotate(8deg); }
+}
+
+/* Aurora: two soft colour fields from the palette, drifting slowly. Gradients are rasterised
+   once; only their transforms move. */
+.bd-aurora { overflow: hidden; }
+.bd-blob {
+  position: absolute;
+  width: 70%;
+  height: 160%;
+  top: -30%;
+  border-radius: 50%;
+  opacity: 0.38;
+  background: radial-gradient(closest-side, rgba(var(--sp-vib-rgb), 0.9), rgba(var(--sp-vib-rgb), 0) 100%);
+  will-change: transform;
+}
+.bd-blob--a { left: -18%; animation: bd-aurora-a 15s ease-in-out infinite alternate paused; }
+.bd-blob--b {
+  right: -22%;
+  opacity: 0.3;
+  background: radial-gradient(closest-side, rgba(var(--sp-dom-rgb), 0.95), rgba(var(--sp-dom-rgb), 0) 100%);
+  animation: bd-aurora-b 21s ease-in-out infinite alternate paused;
+}
+@keyframes bd-aurora-a {
+  0% { transform: translate3d(0, -6%, 0) rotate(-8deg) scale(1); }
+  100% { transform: translate3d(70%, 8%, 0) rotate(14deg) scale(1.3); }
+}
+@keyframes bd-aurora-b {
+  0% { transform: translate3d(0, 10%, 0) rotate(10deg) scale(1.2); }
+  100% { transform: translate3d(-80%, -6%, 0) rotate(-12deg) scale(0.9); }
+}
+
+.bd-tint {
+  background: linear-gradient(100deg,
+    rgba(var(--sp-dark-rgb), calc(var(--sp-scrim) + 0.06)) 0%,
+    rgba(var(--sp-dark-rgb), var(--sp-scrim)) 45%,
+    rgba(var(--sp-dark-rgb), calc(var(--sp-scrim) - 0.18)) 100%);
+}
+.bd-grain {
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.4 -0.2'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+}
+.bd-rim { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.09); }
+
+/* Glass: the game shows through a pale frost. */
+.bd--glass { background: rgba(var(--sp-dark-rgb), 0.34); }
+.bd--glass .bd-art { background-image: var(--sp-glass-url, none); opacity: 0.62; }
+.bd--glass .bd-blob--a { opacity: 0.3; }
+.bd--glass .bd-blob--b { opacity: 0.22; }
+.bd--glass .bd-tint {
+  background: linear-gradient(100deg,
+    rgba(var(--sp-dark-rgb), 0.56) 0%,
+    rgba(var(--sp-dark-rgb), 0.42) 50%,
+    rgba(var(--sp-dark-rgb), 0.24) 100%);
+}
+.bd-frost {
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(170deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 35%, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.06) 100%);
+}
+.bd-sweep { overflow: hidden; }
+.bd-sweep i {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 26%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0));
+  transform: translate3d(-120%, 0, 0) skewX(-18deg);
+  animation: bd-sweep 9s cubic-bezier(0.45, 0, 0.3, 1) infinite paused;
+  animation-delay: 1.4s;
+}
+@keyframes bd-sweep {
+  0% { transform: translate3d(-120%, 0, 0) skewX(-18deg); }
+  32%, 100% { transform: translate3d(520%, 0, 0) skewX(-18deg); }
+}
+.bd--glass .bd-grain { opacity: 0.12; }
+.bd--glass .bd-rim {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Solid: one flat colour, a little light from the top. */
+.bd--solid {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 45%),
+    rgb(var(--sp-dark-rgb));
+}
+.bd--solid .bd-tint { display: none; }
+
+/* Beat glow around the box: a fixed shadow whose opacity follows the beat. */
+.ov-glow {
+  position: absolute;
+  opacity: 0;
+  box-shadow: 0 0 7px 2px var(--sp-vib), 0 0 1px 1px var(--sp-vib-hi);
+  will-change: opacity;
+}
+
+/* ---------------------------------------------------------------- progress */
+
+.pr--times {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.pr-t { flex: none; min-width: 40px; }
+.pr-t-rem { text-align: right; }
+.pr-bar { position: relative; flex: 1; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.2); }
+.pr-fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 2px;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--sp-vib), var(--sp-vib-hi));
+  will-change: transform;
+}
+.pr-shimmer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  opacity: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+}
+.is-live .pr-bar.is-run .pr-shimmer { animation: pr-shimmer 3.6s ease-in-out infinite paused; }
+@keyframes pr-shimmer {
+  0% { transform: translate3d(-100%, 0, 0); opacity: 0; }
+  8% { opacity: 1; }
+  52% { transform: translate3d(340%, 0, 0); opacity: 1; }
+  56%, 100% { transform: translate3d(340%, 0, 0); opacity: 0; }
+}
+.pr-track { position: absolute; inset: 0; will-change: transform; }
+.pr-head {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 9px 2px var(--sp-vib);
+}
+.is-paused .pr-head { box-shadow: none; }
+
+/* ---------------------------------------------------------------- marquee */
+
+.mq { position: relative; overflow: hidden; white-space: nowrap; }
+.mq-run { display: inline-flex; gap: 56px; }
+.mq-run span { flex: none; }
+.mq.is-scroll {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 36px), transparent);
+          mask-image: linear-gradient(90deg, transparent 0, #000 12px, #000 calc(100% - 36px), transparent);
+}
+.mq.is-scroll .mq-run { animation: mq-run var(--mq-dur, 10s) linear infinite paused; will-change: transform; }
+.mq.is-ellipsis .mq-run { display: block; overflow: hidden; text-overflow: ellipsis; }
+@keyframes mq-run {
+  0%, 22% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(calc(var(--mq-dist, 0px) * -1), 0, 0); }
+}
+
+/* ---------------------------------------------------------------- reduced motion */
+
+.ov-reduced *,
+.ov-reduced *::before,
+.ov-reduced *::after { animation: none !important; }
+.ov-reduced .bd-sweep { display: none; }

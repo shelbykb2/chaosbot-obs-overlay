@@ -8,39 +8,46 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      # The preset pins Windows SDK 10.0.22621, which the runner may not have. Use its newest.
-      - name: Configure
-        run: cmake --preset windows-x64 -A x64
-
-      - name: Build
-        run: cmake --build build_x64 --config Release
-
-      - name: Package
+      - name: Install Inno Setup 6
         shell: pwsh
         run: |
-          $out = "package/chaosbot-overlay"
-          New-Item -ItemType Directory -Force "$out/obs-plugins/64bit", "$out/data/obs-plugins/chaosbot-overlay" | Out-Null
-          Copy-Item build_x64/Release/chaosbot-overlay.dll "$out/obs-plugins/64bit/"
-          Copy-Item build_x64/Release/chaosbot-overlay.pdb "$out/obs-plugins/64bit/" -ErrorAction SilentlyContinue
-          Copy-Item data/* "$out/data/obs-plugins/chaosbot-overlay/" -Recurse
-          Copy-Item LICENSE, README.md $out
-          Compress-Archive -Path "$out/*" -DestinationPath chaosbot-overlay-windows-x64.zip
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys') { throw 'Inno Setup publisher signature is not valid.' }
+          $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed with exit code $($process.ExitCode)." }
+          if (-not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe')) { throw 'Inno Setup compiler was not installed.' }
+
+      - name: UI tests
+        working-directory: overlay-ui
+        run: npm ci && npm test
+
+      - name: Runtime tests
+        run: dotnet run --configuration Release --project runtime-tests/OverlayRuntime.Tests.csproj
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}'.TrimStart('v') } else { (Get-Content buildspec.json -Raw | ConvertFrom-Json).version + '-beta.1' }
+          ./tools/Build-Installer.ps1 -Version $version
 
       - uses: actions/upload-artifact@v4
         with:
-          name: chaosbot-overlay-windows-x64
-          path: chaosbot-overlay-windows-x64.zip
-
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" chaosbot-overlay-windows-x64.zip --title "ChaosBot Overlay ${{ github.ref_name }}" --generate-notes
+          name: ChaosBot-OBS-Overlay-Setup
+          path: package/installer-output/ChaosBot-OBS-Overlay-Setup.exe
+          if-no-files-found: error

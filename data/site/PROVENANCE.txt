@@ -1,0 +1,1 @@
+Editor and widgets extracted from ChaosBot feature/overlay-describe, commit 21c5436.

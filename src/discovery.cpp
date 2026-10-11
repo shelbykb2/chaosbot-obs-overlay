@@ -59,6 +59,8 @@ bool write_discovery(quint16 port)
 	o["token"] = QString::fromLatin1(session_token());
 	o["pid"] = (double)QCoreApplication::applicationPid();
 	o["version"] = QString::fromUtf8(PLUGIN_VERSION);
+	o["standalone"] = true;
+	o["runtimePort"] = 5261;
 	QSaveFile f(discovery_path());
 	if (!f.open(QIODevice::WriteOnly)) {
 		obs_log(LOG_WARNING, "could not write %s", qPrintable(discovery_path()));

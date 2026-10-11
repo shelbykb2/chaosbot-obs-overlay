@@ -1,0 +1,42 @@
+/* The chat box (editor/chat.tsx), in OBS and on the editor's canvas. Sizes are in em of the
+   element's text size. Newest line at the bottom; older lines leave through the top.
+   Chromium 103: no color-mix(), :has() or container queries. */
+
+.ch {
+  position: absolute; inset: 0; overflow: hidden; color: #fff; line-height: 1.35;
+  font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+}
+.ch-list { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 0.3em; padding: 0.6em 0.7em; }
+
+.ch.bg-none { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 0.5em rgba(0, 0, 0, 0.7); }
+.ch.bg-soft { background: linear-gradient(180deg, rgba(14, 13, 18, 0) 0%, rgba(14, 13, 18, 0.55) 30%, rgba(14, 13, 18, 0.72) 100%); border-radius: 0.8em; }
+.ch.bg-solid { background: rgba(18, 17, 22, 0.94); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0.8em; }
+
+.ch-line { flex: none; overflow-wrap: anywhere; animation: ch-in 0.28s ease-out both; }
+.ch-badges { display: inline-flex; gap: 0.2em; margin-right: 0.35em; vertical-align: -0.15em; }
+.ch-badge {
+  width: 1.05em; height: 1.05em; padding: 0.12em; border-radius: 0.25em; box-sizing: border-box;
+  fill: #fff; stroke: none;
+}
+.ch-badge.is-broadcaster { background: #e91916; }
+.ch-badge.is-moderator { background: #00ad03; }
+.ch-badge.is-vip { background: #e005b9; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linejoin: round; }
+.ch-badge.is-subscriber { background: #8205b4; }
+.ch-badge.is-partner { background: #9146ff; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.ch-name { font-weight: 700; }
+.ch-colon { margin-right: 0.3em; color: rgba(255, 255, 255, 0.7); }
+.ch-line.is-action .ch-name { margin-right: 0.3em; }
+.ch-line.is-action .ch-text { font-style: italic; }
+.ch-emote { height: 1.6em; width: auto; margin: -0.3em 0.05em; vertical-align: middle; }
+
+/* Bubbles: each message its own card. */
+.ch.is-bubbles .ch-list { gap: 0.4em; }
+.ch.is-bubbles .ch-line { align-self: flex-start; max-width: 100%; padding: 0.35em 0.65em 0.4em; border-radius: 0.7em; background: rgba(24, 22, 30, 0.86); border: 1px solid rgba(255, 255, 255, 0.07); text-shadow: none; }
+.ch.is-bubbles.bg-solid .ch-line { background: rgba(255, 255, 255, 0.06); }
+
+.ch-empty { color: rgba(255, 255, 255, 0.55); font-size: 0.9em; }
+
+@keyframes ch-in {
+  from { opacity: 0; transform: translateY(0.6em); }
+  to { opacity: 1; transform: none; }
+}
