@@ -1,1 +1,0 @@
-import{i as e,p as t,t as n}from"./SpotifyOverlay-67Dk0oZL.js";t(e(n,{}),document.getElementById(`overlay`));

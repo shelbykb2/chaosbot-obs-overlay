@@ -275,10 +275,11 @@ public sealed class Connections {
         lock (gate) { if (generation != twitchGeneration) return; StoreTwitchToken(doc.RootElement); }
         await ValidateTwitch();
     }
-    public async Task EnsureTwitchValid() {
-        long generation; string status; lock (gate) { generation = twitchGeneration; status = twitchStatus; if (vault.Get("twitchAccessToken").Length == 0) return; }
+    public async Task<bool> EnsureTwitchValid(bool validate = false) {
+        long generation; string status; bool initialized; lock (gate) { generation = twitchGeneration; status = twitchStatus; initialized = twitchUserId.Length > 0; if (vault.Get("twitchAccessToken").Length == 0) return false; }
         if (DateTimeOffset.UtcNow >= ReadExpiry(vault.Get("twitchTokenExpiry")).AddMinutes(-5)) await RefreshTwitch(generation);
-        else if (status != "Connected" && status != "Some feeds unavailable") await ValidateTwitch();
+        else if (validate || !initialized || status != "Connected" && status != "Some feeds unavailable") await ValidateTwitch();
+        lock (gate) return generation == twitchGeneration && twitchUserId.Length > 0 && twitchStatus is "Connected" or "Some feeds unavailable";
     }
     public string TwitchAccessToken => vault.Get("twitchAccessToken");
     public string TwitchClientId => vault.Get("twitchClientId").Trim() is { Length: > 0 } id ? id : DefaultTwitchClientId;
@@ -298,7 +299,7 @@ public sealed class Connections {
             ("channel.raid", "1", new JsonObject { ["to_broadcaster_user_id"] = user }),
             ("channel.chat.message", "1", new JsonObject { ["broadcaster_user_id"] = user, ["user_id"] = user }),
             ("channel.chat.message_delete", "1", new JsonObject { ["broadcaster_user_id"] = user, ["user_id"] = user }),
-            ("channel.chat.clear", "1", new JsonObject { ["broadcaster_user_id"] = user }),
+            ("channel.chat.clear", "1", new JsonObject { ["broadcaster_user_id"] = user, ["user_id"] = user }),
             ("channel.chat.clear_user_messages", "1", new JsonObject { ["broadcaster_user_id"] = user, ["user_id"] = user })
         };
         foreach (var spec in specs) {
@@ -393,7 +394,7 @@ public sealed class Connections {
             if (!chatIds.Add(id)) return; chatIdOrder.Enqueue(id); chat.Enqueue(line.DeepClone().AsObject());
             while (chat.Count > 30) chat.Dequeue(); while (chatIdOrder.Count > 2000) chatIds.Remove(chatIdOrder.Dequeue());
         }
-        await hub.Clients.All.SendAsync("chat", line);
+        await hub.Clients.All.SendAsync("chat", new { line });
     }
     public async Task ClearChat(string? id = null, string? user = null, bool all = false) {
         lock (gate) {

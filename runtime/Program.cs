@@ -35,6 +35,10 @@ app.Use(async (ctx, next) => {
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
     ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.scdn.co https://static-cdn.jtvnw.net https://cdn.jsdelivr.net http://127.0.0.1:5260; media-src 'self' data: http://127.0.0.1:5260; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:5260; frame-src 'self' http://127.0.0.1:5260; object-src 'none'; base-uri 'self'";
+    // CORS does not protect a direct WebSocket upgrade. Reject foreign browser origins
+    // on every hub transport, while retaining origin-less native clients.
+    if (ctx.Request.Path.StartsWithSegments("/overlay/hub") &&
+        !HubOrigin.Allowed(ctx.Request.Headers.Origin.ToString(), port)) { ctx.Response.StatusCode = 403; return; }
     if(ctx.Request.Path.StartsWithSegments("/api/internal") && !SecureEquals(ctx.Request.Headers.Authorization.ToString(), "Bearer "+token)) {ctx.Response.StatusCode=401;return;}
     if (ctx.Request.Path.StartsWithSegments("/editor") || ctx.Request.Path.StartsWithSegments("/api/private")) {
         var provided = ctx.Request.Cookies["overlay-editor"] ?? "";

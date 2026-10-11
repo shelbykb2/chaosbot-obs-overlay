@@ -7,6 +7,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Overlay;
 
 namespace Overlay.RuntimeTests;
@@ -51,6 +54,8 @@ public static class FeedTests {
 
             await connections.AddChat(new JsonObject { ["id"] = "chat-1", ["user"] = "viewer", ["name"] = "Viewer", ["text"] = "hello", ["badges"] = new JsonArray(), ["emotes"] = new JsonArray() });
             Require(connections.ChatHistory.Length == 1, "Incoming chat is retained for replay.");
+            var chatWire = JsonSerializer.SerializeToNode(capture.Messages.Last(x => x.Method == "chat").Args[0])!;
+            Require(chatWire["line"]?["id"]?.GetValue<string>() == "chat-1", "Live chat uses the renderer's line envelope.");
             await connections.ClearChat(id: "chat-1");
             Require(connections.ChatHistory.Length == 0, "A deleted message is removed from retained chat history.");
 
@@ -75,6 +80,55 @@ public static class FeedTests {
             await connections.EnsureTwitchValid();
             Require(handler.Count("/oauth2/token") == 1 && handler.Count("/oauth2/validate") == 1, "Expired Twitch tokens refresh once before validation.");
             Require(connections.TwitchConnected, "A validated refreshed token reconnects Twitch.");
+
+            using var feeds = new Feeds(state, connections, capture, new ConfigurationBuilder().Build(), new TestLifetime(), NullLogger<Feeds>.Instance);
+            handler.Respond = request => {
+                if (request.RequestUri?.AbsolutePath == "/oauth2/validate") return Json(HttpStatusCode.ServiceUnavailable, "{}");
+                throw new InvalidOperationException("Unexpected fake HTTP request.");
+            };
+            SetField(connections, "twitchUserId", ""); connections.SetTwitchStatus("Disconnected");
+            var now = DateTimeOffset.UtcNow;
+            await feeds.MaintainTwitch(now);
+            Require(!connections.TwitchConnected, "A failed startup validation stays disconnected.");
+            handler.Respond = request => {
+                if (request.RequestUri?.AbsolutePath == "/oauth2/validate") return Json(HttpStatusCode.OK, """{"user_id":"42","login":"channel"}""");
+                if (request.RequestUri?.AbsolutePath == "/oauth2/token") return Json(HttpStatusCode.OK, """{"access_token":"refreshed-again","refresh_token":"refresh-again","expires_in":3600}""");
+                if (request.RequestUri?.AbsolutePath == "/helix/eventsub/subscriptions") {
+                    var body = JsonNode.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult())!;
+                    if (body["type"]?.GetValue<string>() == "channel.chat.clear") Require(body["condition"]?["user_id"]?.GetValue<string>() == "42", "Chat clear subscribes with its required user_id.");
+                    return Json(HttpStatusCode.Accepted, "{}");
+                }
+                throw new InvalidOperationException("Unexpected fake HTTP request.");
+            };
+            await feeds.MaintainTwitch(now.AddSeconds(16));
+            Require(connections.TwitchConnected, "Startup recovers on the short retry instead of waiting 45 minutes.");
+            var validations = handler.Count("/oauth2/validate");
+            await feeds.MaintainTwitch(now.AddSeconds(32));
+            Require(handler.Count("/oauth2/validate") == validations, "Healthy tokens do not validate on each short expiry check.");
+            vault.Set("twitchTokenExpiry", DateTimeOffset.UtcNow.AddMinutes(4).ToUnixTimeSeconds().ToString());
+            await feeds.MaintainTwitch(now.AddSeconds(48));
+            Require(handler.Count("/oauth2/token") == 2, "Expiry refresh happens between periodic validations.");
+            await feeds.MaintainTwitch(now.AddMinutes(46));
+            Require(handler.Count("/oauth2/validate") == validations + 2, "Periodic validation still runs after 45 minutes.");
+            await connections.SubscribeEventSub("test-session");
+            Require(handler.Count("/helix/eventsub/subscriptions") == 10, "All EventSub subscription contracts are exercised.");
+
+            await connections.AddChat(new JsonObject { ["id"] = "moderated", ["user"] = "viewer", ["text"] = "remove me" });
+            var notification = Encoding.UTF8.GetBytes("""{"metadata":{"message_type":"notification","message_id":"clear-1"},"payload":{"subscription":{"type":"channel.chat.clear_user_messages"},"event":{"target_user_login":"viewer"}}}""");
+            await (Task<string?>)typeof(Feeds).GetMethod("ProcessEventSub", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(feeds, [notification, false, (Action)(() => {}), CancellationToken.None])!;
+            Require(connections.ChatHistory.Length == 0, "A Twitch timeout removes the target user's retained messages.");
+            var clear = JsonSerializer.SerializeToNode(capture.Messages.Last(x => x.Method == "chatClear").Args[0])!;
+            Require(clear["user"]?.GetValue<string>() == "viewer", "The renderer receives the moderation target.");
+
+            state.Save(JsonNode.Parse("""{"schemaVersion":1,"activeSceneId":"manual","scenes":[{"id":"manual","name":"Manual","showFor":[],"elements":[]},{"id":"auto","name":"Auto","showFor":[{"kind":"game","value":"wardogs","label":"Wardogs"}],"elements":[]}]}""")!.AsObject());
+            await feeds.SwitchForGame("wardogs", CancellationToken.None);
+            Require(state.Document["activeSceneId"]?.GetValue<string>() == "auto", "A changed game selects its layout.");
+            state.MakeLive("manual"); await feeds.SwitchForGame("wardogs", CancellationToken.None);
+            Require(state.Document["activeSceneId"]?.GetValue<string>() == "manual", "Manual Make live survives unchanged game polls.");
+            await feeds.SwitchForGame("other", CancellationToken.None); await feeds.SwitchForGame("wardogs", CancellationToken.None);
+            Require(state.Document["activeSceneId"]?.GetValue<string>() == "auto", "The next real game change resumes automatic switching.");
+            foreach (var origin in new[] { "", "http://127.0.0.1:5260", "http://localhost:5260", "http://127.0.0.1:5261" }) Require(HubOrigin.Allowed(origin, 5261), "Known local/native hub origins are accepted.");
+            foreach (var origin in new[] { "https://attacker.example", "null", "http://127.0.0.1:9999", "http://127.0.0.1:5260.attacker.example", "http://localhost:5260, https://attacker.example" }) Require(!HubOrigin.Allowed(origin, 5261), "Foreign browser hub origins are rejected.");
         } finally { try { Directory.Delete(root, true); } catch { } }
     }
 
@@ -106,6 +160,7 @@ public static class FeedTests {
         public CapturingHubContext() => clients = new HubClients(all);
         public IHubClients Clients => clients;
         public IGroupManager Groups { get; } = new GroupManager();
+        public List<Sent> Messages => all.Messages;
     }
     sealed class HubClients(CapturingClientProxy proxy) : IHubClients {
         public IClientProxy All => proxy;
@@ -121,5 +176,11 @@ public static class FeedTests {
     sealed class GroupManager : IGroupManager {
         public Task AddToGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RemoveFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+    sealed class TestLifetime : IHostApplicationLifetime {
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public CancellationToken ApplicationStopping => CancellationToken.None;
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+        public void StopApplication() { }
     }
 }

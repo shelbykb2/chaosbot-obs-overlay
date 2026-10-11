@@ -40,6 +40,9 @@ jobs:
       - name: Runtime tests
         run: dotnet run --configuration Release --project runtime-tests/OverlayRuntime.Tests.csproj
 
+      - name: Local connection boundary
+        run: node tools/Test-RuntimeBoundary.mjs
+
       - name: Build installer
         shell: pwsh
         run: |
