@@ -20,6 +20,8 @@ The script builds the native OBS plugin, runs `npm ci` and the UI production bui
 
 To sign the native plugin DLL, runtime executable and app assembly, and installer with the configured Azure Artifact Signing account, use `./tools/Build-Installer.ps1 -Sign`. The signing helper uses `DefaultAzureCredential` and verifies each Authenticode signature and RFC 3161 timestamp before proceeding.
 
-CI runs the UI and runtime tests, builds an unsigned validation installer, and uploads it as a build artifact. Tag release publishing refuses unsigned installers; a signed release build must be supplied before publishing. Existing release assets are never overwritten.
+CI runs the UI and runtime tests, builds an unsigned validation installer, and uploads it as a build artifact. It does not publish release assets. Publish the locally Azure-signed installer after validating its signature; never substitute the unsigned CI artifact or overwrite an existing release asset.
+
+For a beta, use `./tools/Build-Installer.ps1 -Version 1.1.0-beta.1 -Sign` and publish under a matching prerelease tag. Setup displays the beta version; Windows's numeric file version retains the x.y.z component.
 
 Close OBS before setup or uninstall. The plugin and its runtime hold an application mutex while running, so setup and uninstall refuse to replace or remove a running plugin. Portable setup keeps its uninstaller in `<OBS folder>\chaosbot-overlay-setup`; layouts remain in OBS's plugin configuration directory.

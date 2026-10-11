@@ -2,6 +2,9 @@
 #ifndef AppVersion
   #define AppVersion "1.1.0"
 #endif
+#ifndef AppNumericVersion
+  #define AppNumericVersion "1.1.0"
+#endif
 #define AppPublisher "ChaosBot"
 #define AppURL "https://github.com/shelbykb2/chaosbot-obs-overlay"
 
@@ -31,11 +34,12 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName={#AppName}
-VersionInfoVersion={#AppVersion}.0
+VersionInfoVersion={#AppNumericVersion}.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer
 VersionInfoProductName={#AppName}
-VersionInfoProductVersion={#AppVersion}
+VersionInfoProductVersion={#AppNumericVersion}.0
+VersionInfoProductTextVersion={#AppVersion}
 
 [Tasks]
 Name: "portableobs"; Description: "Install into a portable OBS installation"; GroupDescription: "Installation location:"; Flags: unchecked

@@ -89,7 +89,8 @@ if (-not $Version) {
     $spec = Get-Content (Join-Path $repo 'buildspec.json') -Raw | ConvertFrom-Json
     $Version = [string]$spec.version
 }
-if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Expected a stable x.y.z version, got '$Version'." }
+if ($Version -notmatch '^(\d+\.\d+\.\d+)(?:-beta\.\d+)?$') { throw "Expected x.y.z or x.y.z-beta.N, got '$Version'." }
+$numericVersion = $Matches[1]
 
 $runtimeOutput = if ($SkipRuntimePublish) {
     Join-Path $packageRoot 'runtime'
@@ -148,7 +149,7 @@ Copy-Item -Path (Join-Path $runtimeOutput '*') -Destination (Join-Path $pluginDa
 
 $iscc = Get-InnoCompiler
 $iss = Join-Path $repo 'installer\ChaosBotOverlay.iss'
-Invoke-Native $iscc @('/Qp', "/DAppVersion=$Version", "/O$output", $iss)
+Invoke-Native $iscc @('/Qp', "/DAppVersion=$Version", "/DAppNumericVersion=$numericVersion", "/O$output", $iss)
 $installer = Join-Path $output 'ChaosBot-OBS-Overlay-Setup.exe'
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf) -or (Get-Item -LiteralPath $installer).Length -lt 1000000) {
     throw 'Inno Setup did not produce the expected installer executable.'
