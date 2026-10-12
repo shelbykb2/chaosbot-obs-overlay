@@ -20,7 +20,7 @@ The script builds the native OBS plugin, runs `npm ci` and the UI production bui
 
 To sign the native plugin DLL, runtime executable and app assembly, and installer with the configured Azure Artifact Signing account, use `./tools/Build-Installer.ps1 -Sign`. The signing helper uses `DefaultAzureCredential` and verifies each Authenticode signature and RFC 3161 timestamp before proceeding.
 
-CI runs the UI and runtime tests, builds an unsigned validation installer, and uploads it as a build artifact. It does not publish release assets. Publish the locally Azure-signed installer after validating its signature; never substitute the unsigned CI artifact or overwrite an existing release asset.
+CI runs the UI, runtime and native tests, builds an unsigned validation installer, and uploads it as a build artifact. It does not publish release assets. Publish the locally Azure-signed installer after validating its signature; never substitute the unsigned CI artifact or overwrite an existing release asset.
 
 For a beta, use `./tools/Build-Installer.ps1 -Version 1.1.0-beta.1 -Sign` and publish under a matching prerelease tag. Setup displays the beta version; Windows's numeric file version retains the x.y.z component.
 

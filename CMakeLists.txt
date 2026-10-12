@@ -41,3 +41,21 @@ target_sources(
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
+
+# Native tests for discovery, sync and path rules. They need Qt but not a running OBS.
+option(ENABLE_TESTS "Build the native tests" OFF)
+if(ENABLE_TESTS)
+  enable_testing()
+  add_executable(native-tests tests/native-tests.cpp src/discovery.cpp src/site.cpp src/sync.cpp)
+  target_include_directories(
+    native-tests
+    PRIVATE src $<TARGET_PROPERTY:OBS::libobs,INTERFACE_INCLUDE_DIRECTORIES>
+  )
+  target_compile_definitions(native-tests PRIVATE $<TARGET_PROPERTY:OBS::libobs,INTERFACE_COMPILE_DEFINITIONS>)
+  target_link_libraries(native-tests PRIVATE Qt6::Core)
+  add_test(NAME native-tests COMMAND native-tests)
+  set_tests_properties(
+    native-tests
+    PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+  )
+endif()

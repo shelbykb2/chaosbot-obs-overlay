@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -48,6 +52,16 @@ jobs:
         run: |
           $version = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}'.TrimStart('v') } else { (Get-Content buildspec.json -Raw | ConvertFrom-Json).version + '-beta.1' }
           ./tools/Build-Installer.ps1 -Version $version
+
+      # Reuses the build folder the installer just configured, so OBS's dependencies download once.
+      - name: Native tests
+        shell: pwsh
+        run: |
+          cmake -S . -B build_x64 -DENABLE_TESTS=ON
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build_x64 --config Release --target native-tests
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ctest --test-dir build_x64 -C Release --output-on-failure -V
 
       - uses: actions/upload-artifact@v4
         with:
