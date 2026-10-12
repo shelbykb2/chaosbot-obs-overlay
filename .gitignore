@@ -12,6 +12,7 @@
 !/overlay-ui
 !/runtime
 !/runtime-tests
+!/tests
 !/installer
 !/tools
 !/docs
