@@ -2,12 +2,19 @@
 // that process backgrounded: efficiency mode and a low priority. The overlay then drops frames
 // and its motion falls behind. The page cannot change its own process. This plugin runs inside
 // OBS, so it can, for every browser source, not only ours.
+//
+// Above normal, not high: every browser source gets this, and high would let them take CPU from
+// the game. The work runs on its own thread so the OBS window never waits on it, and it slows to
+// every 5 seconds while no browser source is running.
 #include "schedule.hpp"
 
 #include <obs-module.h>
 #include <plugin-support.h>
 
-#include <QTimer>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -20,7 +27,10 @@
 namespace overlay {
 namespace {
 
-QTimer *timer = nullptr;
+std::thread worker;
+std::mutex lock;
+std::condition_variable wake;
+bool stopping = false;
 
 #ifdef _WIN32
 constexpr DWORD kProcessPowerThrottling = 4;
@@ -32,7 +42,7 @@ void keep_one(DWORD pid)
 	if (!process)
 		return;
 
-	SetPriorityClass(process, HIGH_PRIORITY_CLASS);
+	SetPriorityClass(process, ABOVE_NORMAL_PRIORITY_CLASS);
 
 	PROCESS_POWER_THROTTLING_STATE state = {};
 	state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
@@ -43,21 +53,38 @@ void keep_one(DWORD pid)
 	CloseHandle(process);
 }
 
-void keep_browsers()
+// Returns how many browser source processes were running.
+int keep_browsers()
 {
 	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	if (snap == INVALID_HANDLE_VALUE)
-		return;
+		return 0;
 
+	int found = 0;
 	PROCESSENTRY32W entry = {};
 	entry.dwSize = sizeof(entry);
 	if (Process32FirstW(snap, &entry)) {
 		do {
-			if (_wcsicmp(entry.szExeFile, L"obs-browser-page.exe") == 0)
+			if (_wcsicmp(entry.szExeFile, L"obs-browser-page.exe") == 0) {
 				keep_one(entry.th32ProcessID);
+				++found;
+			}
 		} while (Process32NextW(snap, &entry));
 	}
 	CloseHandle(snap);
+	return found;
+}
+
+void run()
+{
+	std::unique_lock<std::mutex> guard(lock);
+	while (!stopping) {
+		guard.unlock();
+		const int found = keep_browsers();
+		guard.lock();
+		const auto wait = found > 0 ? std::chrono::milliseconds(500) : std::chrono::milliseconds(5000);
+		wake.wait_for(guard, wait, [] { return stopping; });
+	}
 }
 #endif
 
@@ -66,23 +93,26 @@ void keep_browsers()
 void schedule_start()
 {
 #ifdef _WIN32
-	if (timer)
+	if (worker.joinable())
 		return;
-	keep_browsers();
-	timer = new QTimer();
-	timer->setInterval(500);
-	QObject::connect(timer, &QTimer::timeout, timer, [] { keep_browsers(); });
-	timer->start();
+	{
+		std::lock_guard<std::mutex> guard(lock);
+		stopping = false;
+	}
+	worker = std::thread(run);
 	obs_log(LOG_INFO, "browser sources stay scheduled while a game is in front");
-#else
-	(void)timer;
 #endif
 }
 
 void schedule_stop()
 {
-	delete timer;
-	timer = nullptr;
+	{
+		std::lock_guard<std::mutex> guard(lock);
+		stopping = true;
+	}
+	wake.notify_all();
+	if (worker.joinable())
+		worker.join();
 }
 
 } // namespace overlay

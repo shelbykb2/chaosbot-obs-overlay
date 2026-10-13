@@ -55,6 +55,7 @@ bool obs_module_load(void)
 void obs_module_unload(void)
 {
 	obs_frontend_remove_event_callback(on_frontend_event, nullptr);
+	overlay::schedule_stop();
 	if (g_serving) {
 		obs_frontend_remove_dock("chaosbot-overlay-status");
 		overlay::mirror_stop();
