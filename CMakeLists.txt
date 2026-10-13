@@ -37,7 +37,7 @@ endif()
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
-  PRIVATE src/plugin-main.cpp src/http-server.cpp src/site.cpp src/sync.cpp src/discovery.cpp src/dock.cpp src/mirror.cpp src/runtime.cpp
+  PRIVATE src/plugin-main.cpp src/http-server.cpp src/site.cpp src/sync.cpp src/discovery.cpp src/dock.cpp src/mirror.cpp src/runtime.cpp src/schedule.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})

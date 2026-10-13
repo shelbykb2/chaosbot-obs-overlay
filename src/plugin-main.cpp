@@ -7,6 +7,7 @@
 #include "http-server.hpp"
 #include "mirror.hpp"
 #include "runtime.hpp"
+#include "schedule.hpp"
 #ifdef _WIN32
 #include <windows.h>
 static HANDLE running_mutex = nullptr;
@@ -21,6 +22,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 {
 	// Qt and the main window are only ready once OBS finished loading.
 	if (event == OBS_FRONTEND_EVENT_FINISHED_LOADING) {
+		overlay::schedule_start();
 		g_serving = overlay::start_http_server();
 		if (g_serving) {
 			overlay::write_discovery(overlay::kPluginPort);
@@ -29,6 +31,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 			overlay::add_status_dock();
 		}
 	} else if (event == OBS_FRONTEND_EVENT_EXIT) {
+		overlay::schedule_stop();
 		if (g_serving) overlay::remove_discovery();
 		if (g_serving) {
 			overlay::mirror_stop();
