@@ -27,7 +27,7 @@ Spotify requires your Spotify app's client ID and the redirect URI `http://127.0
 
 ChaosBot discovers `%LOCALAPPDATA%\ChaosBot Overlay\plugin.json` while OBS is running and syncs authenticated requests to port 5260. The compatible desktop integration shares edits in both directions and copies referenced media. Concurrent local edits are saved in ChaosBot's `overlay-conflicts` directory before loading the plugin's latest document. Older desktop versions can send their legacy overlay cache; modern synchronization takes precedence. Closing ChaosBot leaves the standalone overlay and connections available in OBS.
 
-Discovery includes `port`, `token`, `pid`, `version`, `standalone` and `runtimePort`. The token changes each OBS start. `CHAOSBOT_OVERLAY_DATA_DIR` changes the discovery directory for isolated tests.
+Discovery includes `port`, `token`, `pid`, `version`, `standalone`, `runtimePort` and `schedulesBrowserSources`. The token changes each OBS start. `schedulesBrowserSources` is `true` while the plugin keeps OBS's browser source processes scheduled with a game in front; ChaosBot then stops its own loop for that, so only one runs. `CHAOSBOT_OVERLAY_DATA_DIR` changes the discovery directory for isolated tests.
 
 ## Development
 

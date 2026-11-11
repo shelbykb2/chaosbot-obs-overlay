@@ -51,7 +51,7 @@ static QString discovery_dir()
 
 static QString discovery_path() { return discovery_dir() + "/plugin.json"; }
 
-bool write_discovery(quint16 port)
+bool write_discovery(quint16 port, bool schedules_browser_sources)
 {
 	QDir().mkpath(discovery_dir());
 	QJsonObject o;
@@ -61,6 +61,8 @@ bool write_discovery(quint16 port)
 	o["version"] = QString::fromUtf8(PLUGIN_VERSION);
 	o["standalone"] = true;
 	o["runtimePort"] = 5261;
+	// ChaosBot trusts only an explicit true; an older plugin leaves this out.
+	o["schedulesBrowserSources"] = schedules_browser_sources;
 	QSaveFile f(discovery_path());
 	if (!f.open(QIODevice::WriteOnly)) {
 		obs_log(LOG_WARNING, "could not write %s", qPrintable(discovery_path()));

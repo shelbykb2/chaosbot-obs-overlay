@@ -1,6 +1,7 @@
 // Native tests for the parts of the plugin ChaosBot talks to: the discovery file, the sync
-// routes and the site path rules. They run without OBS; obs_log is stubbed below.
+// routes, the site path rules and whether browser sources are announced as scheduled. They run without OBS; obs_log is stubbed below.
 #include "discovery.hpp"
+#include "schedule.hpp"
 #include "site.hpp"
 #include "sync.hpp"
 #include <QCoreApplication>
@@ -69,7 +70,7 @@ static void token_is_64_hex_and_compares_exactly()
 
 static void discovery_file_has_what_chaosbot_reads(const QString &data_dir)
 {
-	CHECK(write_discovery(4455));
+	CHECK(write_discovery(4455, true));
 	const QJsonObject o = json(read_bytes(data_dir + "/plugin.json"));
 	CHECK(o["port"].toInt() == 4455);
 	CHECK(o["token"].toString().toLatin1() == session_token());
@@ -77,9 +78,28 @@ static void discovery_file_has_what_chaosbot_reads(const QString &data_dir)
 	CHECK(o["version"].toString() == "9.9.9-test");
 	// ChaosBot only uses two-way sync when this is true. An old plugin leaves it out.
 	CHECK(o["standalone"].toBool());
+	// ChaosBot stops its own browser source loop only for a JSON true here, not "true" or 1.
+	CHECK(o["schedulesBrowserSources"].isBool() && o["schedulesBrowserSources"].toBool());
 
 	remove_discovery();
 	CHECK(!QFile::exists(data_dir + "/plugin.json"));
+}
+
+static void discovery_says_when_browser_sources_are_not_scheduled(const QString &data_dir)
+{
+	CHECK(write_discovery(4455, false));
+	const QJsonObject o = json(read_bytes(data_dir + "/plugin.json"));
+	CHECK(o["schedulesBrowserSources"].isBool() && !o["schedulesBrowserSources"].toBool());
+	remove_discovery();
+}
+
+// Starting the worker here would change the priority of any OBS browser source running on this
+// machine, so only the stopped state is checked.
+static void schedule_is_not_announced_before_it_runs()
+{
+	CHECK(!schedule_running());
+	schedule_stop(); // safe without a start
+	CHECK(!schedule_running());
 }
 
 static void discovery_is_left_alone_when_another_obs_owns_it(const QString &data_dir)
@@ -175,6 +195,9 @@ int main(int argc, char **argv)
 	const std::vector<std::pair<const char *, std::function<void()>>> tests = {
 		{"token_is_64_hex_and_compares_exactly", token_is_64_hex_and_compares_exactly},
 		{"discovery_file_has_what_chaosbot_reads", [&] { discovery_file_has_what_chaosbot_reads(data_dir); }},
+		{"discovery_says_when_browser_sources_are_not_scheduled",
+		 [&] { discovery_says_when_browser_sources_are_not_scheduled(data_dir); }},
+		{"schedule_is_not_announced_before_it_runs", schedule_is_not_announced_before_it_runs},
 		{"discovery_is_left_alone_when_another_obs_owns_it",
 		 [&] { discovery_is_left_alone_when_another_obs_owns_it(data_dir); }},
 		{"sync_needs_the_token", sync_needs_the_token},

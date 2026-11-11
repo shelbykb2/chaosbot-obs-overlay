@@ -37,7 +37,7 @@ endif()
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
-  PRIVATE src/plugin-main.cpp src/http-server.cpp src/site.cpp src/sync.cpp src/discovery.cpp src/dock.cpp src/mirror.cpp src/runtime.cpp
+  PRIVATE src/plugin-main.cpp src/http-server.cpp src/site.cpp src/sync.cpp src/discovery.cpp src/dock.cpp src/mirror.cpp src/runtime.cpp src/schedule.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
@@ -46,7 +46,7 @@ set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_nam
 option(ENABLE_TESTS "Build the native tests" OFF)
 if(ENABLE_TESTS)
   enable_testing()
-  add_executable(native-tests tests/native-tests.cpp src/discovery.cpp src/site.cpp src/sync.cpp)
+  add_executable(native-tests tests/native-tests.cpp src/discovery.cpp src/site.cpp src/sync.cpp src/schedule.cpp)
   target_include_directories(
     native-tests
     PRIVATE src $<TARGET_PROPERTY:OBS::libobs,INTERFACE_INCLUDE_DIRECTORIES>

@@ -56,7 +56,7 @@ app.Use(async (ctx, next) => {
     catch { if (!ctx.Response.HasStarted) { ctx.Response.StatusCode = 503; await ctx.Response.WriteAsJsonAsync(new { error = "That operation could not finish. Check Connections and try again." }); } }
 });
 app.UseCors();
-app.MapGet("/health", () => new { ok = true, standalone = true, version = "1.1.0" });
+app.MapGet("/health", () => new { ok = true, standalone = true, version = "1.1.1" });
 app.MapGet("/api/internal/scenes", (OverlayState s)=>{s.UseModernSync();return Results.Json(s.Snapshot());});
 app.MapPut("/api/internal/scenes",async (JsonObject b,OverlayState s,Connections c,IHubContext<OverlayHub> hub)=>{
     var doc=b["doc"] as JsonObject ?? throw new InvalidDataException("No layout was supplied.");
