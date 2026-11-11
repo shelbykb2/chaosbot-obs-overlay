@@ -1,9 +1,9 @@
 #define AppName "ChaosBot OBS Overlay"
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.1.1"
 #endif
 #ifndef AppNumericVersion
-  #define AppNumericVersion "1.1.0"
+  #define AppNumericVersion "1.1.1"
 #endif
 #define AppPublisher "ChaosBot"
 #define AppURL "https://github.com/shelbykb2/chaosbot-obs-overlay"
