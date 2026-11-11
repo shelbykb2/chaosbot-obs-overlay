@@ -115,4 +115,10 @@ void schedule_stop()
 		worker.join();
 }
 
+// Called on the OBS main thread, the same one that starts and stops the worker.
+bool schedule_running()
+{
+	return worker.joinable();
+}
+
 } // namespace overlay

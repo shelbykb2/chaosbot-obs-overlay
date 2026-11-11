@@ -25,7 +25,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 		overlay::schedule_start();
 		g_serving = overlay::start_http_server();
 		if (g_serving) {
-			overlay::write_discovery(overlay::kPluginPort);
+			overlay::write_discovery(overlay::kPluginPort, overlay::schedule_running());
 			overlay::runtime_start();
 			overlay::mirror_start();
 			overlay::add_status_dock();
